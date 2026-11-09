@@ -2,7 +2,7 @@
 
 A small script that creates a KVM virtual machine on your Linux laptop where Claude Code runs, builds and tests your project, with **one shared folder** from your host and your normal editor connected over SSH.
 
-The point: an agent that runs commands without asking is far less risky when it lives in a VM that only sees one project folder, instead of your whole user session (SSH keys, cloud credentials, other projects, Docker socket).
+The point: an agent that runs commands without asking is far less risky when it lives in a VM that only sees one project folder, instead of your whole user session (SSH keys, cloud credentials, other projects).
 
 ## How it works
 
@@ -14,12 +14,11 @@ Host (Fedora / Ubuntu / Manjaro)
                          ▼                                      ▼
                         VM (own kernel)  ~/working-directory/ (the shared folder)
                          ├─ Claude Code CLI + editor server
-                         └─ Docker (runs inside the VM only)
 ```
 
-- Everything the agent runs (builds, tests, Docker, package installs) happens **inside the VM**.
+- Everything the agent runs (builds, tests, package installs) happens **inside the VM**.
 - The VM has its own kernel, which is a stronger boundary than a container or the Claude Code Bash sandbox.
-- Docker lives in the VM. Giving an agent access to a *host* Docker daemon is effectively giving it root on the host.
+- Giving an agent access to a *host* Docker daemon is effectively giving it root on the host.
 
 ## Prerequisites
 
@@ -80,7 +79,7 @@ Then:
 2. Sign in to Claude inside the VM (see *Claude login* below).
 3. Take a snapshot (see *Snapshots*).
 
-The script prints `PASS`/`FAIL` for Docker, Claude Code and shared-folder write access at the end.
+The script prints `PASS`/`FAIL` for Claude Code and shared-folder write access at the end.
 
 ## What the script does
 
@@ -89,7 +88,7 @@ The script prints `PASS`/`FAIL` for Docker, Claude Code and shared-folder write 
 1. **Checks** (before changing anything): config values, required commands, `/dev/kvm`, that the VM does not already exist, that the libvirt network is active, IP forwarding, Docker on the host (warning only), shared folder sanity (it refuses `$HOME` and `/`), `virtiofsd`, image checksum.
 2. Creates an SSH key for the VM if missing (`~/.ssh/claude-vm_ed25519`, no passphrase: it only opens this VM).
 3. Copies the image into libvirt's images directory and grows it to `DISK_GB`.
-4. Writes a cloud-init file: a user with **your host uid**, your SSH public key, `git`, the virtiofs mount, Docker, and Claude Code.
+4. Writes a cloud-init file: a user with **your host uid**, your SSH public key, `git`, the virtiofs mount, and Claude Code.
 5. Runs `virt-install` to create and boot the VM.
 6. Waits for an IP, writes a `Host claude-vm` block in `~/.ssh/config` (replaced on re-creation, old file kept as `config.bak`), waits for cloud-init, and runs the checks.
 
@@ -109,7 +108,7 @@ The script prints `PASS`/`FAIL` for Docker, Claude Code and shared-folder write 
 | `OSINFO` | `fedora-unknown` | `virt-install --osinfo list` shows valid names. |
 | `NETWORK`, `URI`, `IMAGES_DIR` | `default`, `qemu:///system`, `/var/lib/libvirt/images` | |
 | `SSH_KEY` | `~/.ssh/<VM_NAME>_ed25519` | |
-| `DOCKER_CMD`, `CLAUDE_CMD` | vendor install scripts | Run in the VM on first boot. `CLAUDE_CMD` must not contain single quotes. **(verify both against the vendors' current install docs)** |
+| `CLAUDE_CMD` | vendor install script | Run as your user in the VM on first boot. Must not contain single quotes. **(verify against the vendor's current install docs)** |
 
 ## Daily use
 
@@ -126,7 +125,7 @@ vsh start claude-vm        # start (the VM does not autostart)
 vsh shutdown claude-vm     # stop
 ```
 
-Run Claude, Docker, builds and tests **in the VM window**. Use a normal local editor window on the host to read and review changes.
+Run Claude, builds and tests **in the VM window**. Use a normal local editor window on the host to read and review changes.
 
 ### Claude login
 
@@ -148,7 +147,7 @@ Revert: shut down, then `vsh snapshot-revert claude-vm clean-base`. List and del
 
 ## Security model
 
-**What it gives you:** a separate kernel; the agent only sees the VM's disk and the one shared folder; no host Docker socket, no host SSH keys or cloud credentials (the VM never sees them); `ForwardAgent no`.
+**What it gives you:** a separate kernel; the agent only sees the VM's disk and the one shared folder; no host Docker socket (the VM has none), no host SSH keys or cloud credentials (the VM never sees them); `ForwardAgent no`.
 
 **What it does not give you:**
 
@@ -196,7 +195,7 @@ Check first that the target uid is free in the VM (`virt-cat -a <image> /etc/pas
 
 **Shared folder not mounted in the VM.** Check `sudo dmesg | tail` in the VM and `cat /sys/fs/virtiofs/*/tag` (should list `dev`). Check on the host that `virtiofsd` is installed and that the VM XML has the filesystem (`sudo virsh -c qemu:///system dumpxml claude-vm | grep -A6 filesystem`). The fstab line uses `nofail`, so a missing share does not block booting.
 
-**Provisioning failed (Docker or Claude Code missing).** In the VM: `sudo less /var/log/cloud-init-output.log`. Usual causes: no internet (above), a changed vendor install URL (override `DOCKER_CMD` / `CLAUDE_CMD`).
+**Provisioning failed (Claude Code is missing).** In the VM: `sudo less /var/log/cloud-init-output.log`. Usual causes: no internet (above), a changed vendor install URL (override `CLAUDE_CMD`).
 
 **`virt-install` rejects a flag.** Your version may be too old for `--cloud-init` or `--osinfo`: upgrade it, or check `OSINFO` with `virt-install --osinfo list`.
 

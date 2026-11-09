@@ -26,7 +26,6 @@ NETWORK=${NETWORK:-default}
 URI=${URI:-qemu:///system}
 IMAGES_DIR=${IMAGES_DIR:-/var/lib/libvirt/images}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/${VM_NAME}_ed25519}
-DOCKER_CMD=${DOCKER_CMD:-curl -fsSL https://get.docker.com | sh}
 CLAUDE_CMD=${CLAUDE_CMD:-curl -fsSL https://claude.ai/install.sh | bash}   # must not contain single quotes
 
 # LC_ALL=C: we grep virsh output ("Active: yes"), which is translated on non-English hosts.
@@ -97,9 +96,6 @@ packages: [git]
 runcmd:
   - |
     $MOUNT_CMD
-    $DOCKER_CMD
-    usermod -aG docker $VM_USER
-    systemctl enable --now docker
     runuser -l $VM_USER -c '$CLAUDE_CMD'
 EOF
 
@@ -133,7 +129,7 @@ Host $VM_NAME
 # <<< $VM_NAME <<<
 EOF
   ssh-keygen -R "$IP" >/dev/null 2>&1 || true
-  log "Waiting for SSH, then for cloud-init (installs Docker and Claude Code, a few minutes)"
+  log "Waiting for SSH, then for cloud-init (installs Claude Code, a few minutes)"
   for _ in $(seq 60); do
     ssh -o BatchMode=yes -o ConnectTimeout=5 "$VM_NAME" true 2>/dev/null && break
     sleep 5
@@ -145,7 +141,6 @@ EOF
   # shellcheck disable=SC2029  # expanding on the client side is intended
   ssh "$VM_NAME" "MOUNT='$SMOKE_MOUNT' bash -s" <<'EOF' || true
 chk() { if eval "$2" >/dev/null 2>&1; then echo "  PASS  $1"; else echo "  FAIL  $1"; fi; }
-chk "docker installed" 'command -v docker'
 chk "claude installed" 'command -v claude || test -x ~/.local/bin/claude'
 [ -z "$MOUNT" ] || chk "shared folder writable" 'touch "$MOUNT/.vm-test" && rm "$MOUNT/.vm-test"'
 EOF
